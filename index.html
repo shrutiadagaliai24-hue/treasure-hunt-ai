@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Autonomous AI Treasure Hunt Agent</title>
+<style>
+  body { background: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: Arial, sans-serif; }
+  h2 { color: #FFD700; margin-bottom: 10px; }
+  canvas { border: 2px solid #FFD700; display: block; }
+  #info { color: white; margin-top: 8px; font-size: 16px; }
+  #message { color: #00FF00; font-size: 22px; font-weight: bold; margin-top: 10px; min-height: 30px; }
+  button { margin-top: 12px; padding: 10px 28px; font-size: 16px; background: #FFD700; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+  button:hover { background: #FFA500; }
+</style>
+</head>
+<body>
+<h2>🤖 Autonomous AI Treasure Hunt Agent</h2>
+<canvas id="canvas" width="600" height="600"></canvas>
+<div id="info">Time Left: <span id="timer">30</span>s &nbsp;|&nbsp; <span id="hint">AI is thinking...</span></div>
+<div id="message"></div>
+<button onclick="resetGame()">🔄 Restart</button>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const ROWS = 10, COLS = 10, CELL = 60;
+
+let playerPos, treasurePos, traps, path, running, timeLeft, lastMoveTime, intervalId;
+
+function randInt(a, b) { return Math.floor(Math.random() * (b - a + 1)) + a; }
+function posEq(a, b) { return a[0] === b[0] && a[1] === b[1]; }
+
+function initGame() {
+  playerPos = [0, 0];
+  treasurePos = [randInt(5,9), randInt(5,9)];
+  traps = [];
+  while (traps.length < 10) {
+    let t = [randInt(0,9), randInt(0,9)];
+    if (!posEq(t, playerPos) && !posEq(t, treasurePos) && !traps.some(x => posEq(x, t)))
+      traps.push(t);
+  }
+  timeLeft = 30;
+  running = true;
+  lastMoveTime = Date.now();
+  document.getElementById('message').textContent = '';
+  document.getElementById('message').style.color = '#00FF00';
+}
+
+function bfs(start, goal) {
+  const queue = [[start, []]];
+  const visited = new Set([start.toString()]);
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  while (queue.length) {
+    const [cur, p] = queue.shift();
+    if (posEq(cur, goal)) return p;
+    for (const [dx, dy] of dirs) {
+      const nx = cur[0]+dx, ny = cur[1]+dy;
+      const nc = [nx, ny];
+      if (nx>=0 && nx<ROWS && ny>=0 && ny<COLS && !visited.has(nc.toString()) && !traps.some(t=>posEq(t,nc))) {
+        visited.add(nc.toString());
+        queue.push([nc, [...p, nc]]);
+      }
+    }
+  }
+  return [];
+}
+
+function getHint(p) {
+  const path = bfs(p, treasurePos);
+  if (!path.length) return "AI: No Safe Path Found!";
+  const n = path[0];
+  if (n[0] > p[0]) return "AI Hint: MOVE DOWN ⬇";
+  if (n[0] < p[0]) return "AI Hint: MOVE UP ⬆";
+  if (n[1] > p[1]) return "AI Hint: MOVE RIGHT ➡";
+  if (n[1] < p[1]) return "AI Hint: MOVE LEFT ⬅";
+  return "AI: Exploring...";
+}
+
+function draw() {
+  ctx.clearRect(0,0,600,600);
+
+  // Grid
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  for (let r=0; r<ROWS; r++) for (let c=0; c<COLS; c++) {
+    ctx.strokeRect(c*CELL, r*CELL, CELL, CELL);
+  }
+
+  // BFS path highlight
+  const p = bfs(playerPos, treasurePos);
+  ctx.fillStyle = 'rgba(0,255,100,0.15)';
+  for (const [r,c] of p) ctx.fillRect(c*CELL+1, r*CELL+1, CELL-2, CELL-2);
+
+  // Treasure
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(treasurePos[1]*CELL+2, treasurePos[0]*CELL+2, CELL-4, CELL-4);
+  ctx.font = `${CELL-10}px serif`;
+  ctx.fillText('💰', treasurePos[1]*CELL+5, treasurePos[0]*CELL+CELL-8);
+
+  // Traps
+  for (const [r,c] of traps) {
+    ctx.fillStyle = '#FF3333';
+    ctx.fillRect(c*CELL+2, r*CELL+2, CELL-4, CELL-4);
+    ctx.font = `${CELL-14}px serif`;
+    ctx.fillText('💣', c*CELL+6, r*CELL+CELL-8);
+  }
+
+  // Player
+  ctx.fillStyle = '#3399FF';
+  ctx.fillRect(playerPos[1]*CELL+2, playerPos[0]*CELL+2, CELL-4, CELL-4);
+  ctx.font = `${CELL-10}px serif`;
+  ctx.fillText('🤖', playerPos[1]*CELL+4, playerPos[0]*CELL+CELL-6);
+}
+
+function gameLoop() {
+  if (!running) return;
+
+  // Timer
+  const now = Date.now();
+  timeLeft = Math.max(0, 30 - Math.floor((now - startTime)/1000));
+  document.getElementById('timer').textContent = timeLeft;
+
+  // AI move every 400ms
+  if (now - lastMoveTime > 400) {
+    const p = bfs(playerPos, treasurePos);
+    if (p.length) playerPos = p[0];
+    lastMoveTime = now;
+    document.getElementById('hint').textContent = getHint(playerPos);
+  }
+
+  draw();
+
+  // Win check
+  if (posEq(playerPos, treasurePos)) {
+    running = false;
+    document.getElementById('message').style.color = '#00FF00';
+    document.getElementById('message').textContent = '🏆 AI SUCCESSFULLY FOUND THE TREASURE!';
+    return;
+  }
+
+  // Trap check
+  if (traps.some(t => posEq(t, playerPos))) {
+    running = false;
+    document.getElementById('message').style.color = '#FF3333';
+    document.getElementById('message').textContent = '💥 AI HIT A TRAP! GAME OVER!';
+    return;
+  }
+
+  // Time check
+  if (timeLeft <= 0) {
+    running = false;
+    document.getElementById('message').style.color = '#FF3333';
+    document.getElementById('message').textContent = '⏰ TIME OVER! AI FAILED!';
+    return;
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+let startTime;
+function resetGame() {
+  initGame();
+  startTime = Date.now();
+  requestAnimationFrame(gameLoop);
+}
+
+resetGame();
+</script>
+</body>
+</html>
